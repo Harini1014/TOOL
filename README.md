@@ -59,7 +59,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Backend runs at: http://localhost:8000
+Backend runs at: https://qa-tool-1oh2.onrender.com
 
 ### Step 2 — Frontend (new terminal)
 

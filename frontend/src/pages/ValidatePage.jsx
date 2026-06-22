@@ -31,9 +31,17 @@ export default function ValidatePage() {
       form.append('pdf_file',  pdfFile)
       form.append('checks',    selected.join(','))
 
-      const { data } = await axios.post('/validate', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const API_BASE = "https://qa-tool-1oh2.onrender.com";
+
+const { data } = await axios.post(
+  `${API_BASE}/validate`,
+  form,
+  {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  }
+);
 
       clearInterval(timer)
       setProgress(100)
