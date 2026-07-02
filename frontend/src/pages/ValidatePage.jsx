@@ -31,7 +31,7 @@ export default function ValidatePage() {
       form.append('pdf_file',  pdfFile)
       form.append('checks',    selected.join(','))
 
-      const API_BASE = "http://localhost:8000" // TODO: make this configurable;
+      const API_BASE = "https://tool-2-3w1t.onrender.com" // TODO: make this configurable;
 
 const { data } = await axios.post(
   `${API_BASE}/validate`,

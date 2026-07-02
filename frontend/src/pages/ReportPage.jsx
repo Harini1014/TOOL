@@ -5,7 +5,7 @@ import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
 
-const API_BASE = "http://localhost:8000" // TODO: make this configurable
+const API_BASE = "https://tool-2-3w1t.onrender.com" // TODO: make this configurable
 
 function BadgeCell({ value, color }) {
   const colors = {
