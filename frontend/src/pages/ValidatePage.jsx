@@ -31,7 +31,7 @@ export default function ValidatePage() {
       form.append('pdf_file',  pdfFile)
       form.append('checks',    selected.join(','))
 
-      const API_BASE = "https://qa-tool-1oh2.onrender.com";
+      const API_BASE = "http://localhost:8000" // TODO: make this configurable;
 
 const { data } = await axios.post(
   `${API_BASE}/validate`,
@@ -45,6 +45,10 @@ const { data } = await axios.post(
 
       clearInterval(timer)
       setProgress(100)
+      // React Router's navigation state can't carry File objects (it gets
+      // lost/serialized away), so stash the original PDF on window for
+      // ReportPage to use when generating the highlighted PDF download.
+      window._qaValidationPdfFile = pdfFile
       setTimeout(() => {
         setLoading(false)
         navigate('/report', { state: { result: data, checks: selected } })

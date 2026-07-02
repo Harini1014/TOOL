@@ -1,0 +1,33 @@
+=== PDF Highlight Debug Log ===
+
+Missing paragraph error: https://www.shutterstock.com/image-photo/abuja-nigeria-august-02-2021-african-2018056664?t…
+  before_text: 
+  after_text: Chapter 2 Alternatives to Traditional Ethical Theories: African Communitarian, Indigenous, and Feminist Values
+  before_rect: None
+  after_rect: Rect(72.0, 290.2519226074219, 158.70567321777344, 322.9927062988281)
+  gap_rect: Rect(72.0, 280.2519226074219, 158.70567321777344, 290.2519226074219)
+  anchor: Rect(72.0, 280.2519226074219, 158.70567321777344, 290.2519226074219)
+
+Missing paragraph error: The emphasis on restoration and restitution, instead of punishment and serving an abstract…
+  before_text: When justice is breached, scholars familiar with the Igbo system of restorative justice find it to be an excellent processoriented and community-based system that can reach decisions through consensus. For example, Oko Elechi writes that the goal of justice must be the restoration of relationships and social harmony, especially if there has been a conflict that disrupted the social relationships. Igbo justice models are founded on the idea that all members of society are experts on their shared social realities; their expertise should be respected, and they are qualified to participate in the quest for justice. These indigenous justice systems recognize that crime is a violation of people and relationships, not just a violation of law. Since the relationships are so important, the accountability of the wrongdoer has to be to the victims and the community, not to an external system of legal codes and bureaucratic procedures (Elechi 2008, 398)
+  after_text: It is important to note that, at certain levels of political discourse, women and children were not allowed full participation (Elechi (2004, 165). However, women have access to constitutionally enshrined sanctionary powers that can be brought into play to offset the dominance of men. In addition, women have analogous institutions where they adjudicate on conflicts among themselves. Furthermore, women are encouraged to bring their marital problems to the village courts for adjudication. It is also important to note that women do dominate the informal realms of social control (which in a communitarian model of justice hold more weight than the Western professionalized forms of justice), and are gaining more formal authority and rank in Igbo societies. (Elechi 2008, 397)
+  before_rect: Rect(227.36402893066406, 271.2723083496094, 251.36402893066406, 284.664306640625)
+  after_rect: Rect(116.96040344238281, 285.27630615234375, 163.87921142578125, 298.6683044433594)
+  gap_rect: Rect(116.96040344238281, 284.664306640625, 251.36402893066406, 285.27630615234375)
+  anchor: Rect(116.96040344238281, 284.664306640625, 251.36402893066406, 285.27630615234375)
+
+Missing paragraph error: Wiggan, Albert. The to Indigenous as . TEDxSydney. July 15, 2019. https://www.youtube.com/…
+  before_text: Weisberg, D. Kelly, editor. Applications Feminist Legal Theory. Temple University Press, 1996. JSTOR, http://www.jstor.org/stable/j.ctt14bs8md. Accessed 4 Aug. 2025.
+  after_text: 
+  before_rect: Rect(166.07423400878906, 563.7114868164062, 188.07533264160156, 575.9874877929688)
+  after_rect: None
+  gap_rect: Rect(166.07423400878906, 575.9874877929688, 188.07533264160156, 585.9874877929688)
+  anchor: Rect(166.07423400878906, 575.9874877929688, 188.07533264160156, 585.9874877929688)
+
+Missing paragraph error: Williams, Joan. Deconstructing Gender, 87 Michigan Law Review 797 (1989). https://reposito…
+  before_text: Weisberg, D. Kelly, editor. Applications Feminist Legal Theory. Temple University Press, 1996. JSTOR, http://www.jstor.org/stable/j.ctt14bs8md. Accessed 4 Aug. 2025.
+  after_text: 
+  before_rect: Rect(166.07423400878906, 563.7114868164062, 188.07533264160156, 575.9874877929688)
+  after_rect: None
+  gap_rect: Rect(166.07423400878906, 575.9874877929688, 188.07533264160156, 585.9874877929688)
+  anchor: Rect(166.07423400878906, 575.9874877929688, 188.07533264160156, 585.9874877929688)
