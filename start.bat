@@ -14,8 +14,9 @@ timeout /t 5 /nobreak >nul
 
 echo.
 echo Both servers are starting...
-echo Backend  : http://localhost:8000
-echo Frontend : http://localhost:5173
+echo Backend  → https://tool-2-3w1t.onrender.com/
+echo Frontend → https://tool-3-vctq.onrender.com
+
 echo.
-echo Open your browser at http://localhost:5173
+echo Open your browser at https://tool-3-vctq.onrender.com
 pause

@@ -69,11 +69,11 @@ npm install
 npm run dev
 ```
 
-Frontend runs at: http://localhost:5173
+Frontend runs at: https://tool-3-vctq.onrender.com
 
 ### Step 3 — Open in browser
 
-Go to **http://localhost:5173**
+Go to **https://tool-3-vctq.onrender.com**
 
 ---
 

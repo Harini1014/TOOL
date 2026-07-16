@@ -6,8 +6,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/validate': 'http://localhost:8000',
-      '/health'  : 'http://localhost:8000',
+      '/validate': 'https://tool-2-3w1t.onrender.com/,
+      '/health': 'https://tool-3-vctq.onrender.com,
     }
   }
 })

@@ -20,10 +20,10 @@ FRONTEND_PID=$!
 cd ..
 
 echo "✅ Both servers are running:"
-echo "   Backend  → http://localhost:8000"
-echo "   Frontend → http://localhost:5173"
+echo "   Backend  → https://tool-2-3w1t.onrender.com/"
+echo "   Frontend → https://tool-3-vctq.onrender.com
 echo ""
-echo "Open http://localhost:5173 in your browser."
+echo "Open https://tool-3-vctq.onrender.com in your browser."
 echo "Press Ctrl+C to stop both servers."
 
 wait $BACKEND_PID $FRONTEND_PID

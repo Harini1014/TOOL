@@ -31,7 +31,7 @@ export default function ValidatePage() {
       form.append('pdf_file', pdfFile)
       form.append('checks', selected.join(','))
 
-      const API_BASE = "http://localhost:8000"
+      const API_BASE = "https://tool-2-3w1t.onrender.com/"
 
       const { data } = await axios.post(
         `${API_BASE}/validate`,
@@ -61,7 +61,7 @@ export default function ValidatePage() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-4xl w-full mx-auto relative z-10">
-        
+
         {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center p-3 bg-slate-900/80 rounded-2xl border border-slate-800 mb-4 shadow-xl shadow-emerald-500/5">
@@ -157,7 +157,7 @@ export default function ValidatePage() {
           </button>
 
         </div>
-        
+
         {/* Footer */}
         <p className="text-center text-xs text-slate-600 mt-8">
           Powered by PyMuPDF + python-docx • Localhost mode
