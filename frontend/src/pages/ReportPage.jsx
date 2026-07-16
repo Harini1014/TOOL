@@ -101,21 +101,6 @@ export default function ReportPage() {
     }
   }
 
-  // ── Download: JSON report ────────────────────────────────────────────────
-  function downloadJsonReport() {
-    try {
-      const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'qa_report.json'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      console.error('JSON Download error:', e)
-      alert('Failed to download JSON report.')
-    }
-  }
 
   // ── Download: Highlighted PDF ────────────────────────────────────────────
   async function downloadHighlightedPdf() {
@@ -220,22 +205,10 @@ export default function ReportPage() {
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button
-                  onClick={() => downloadReport('docx')}
-                  className="text-xs bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 px-4 py-2.5 rounded-xl font-semibold flex items-center gap-1.5 transition-all active:scale-[0.98]"
-                >
-                  📄 Download Word Report
-                </button>
-                <button
                   onClick={() => downloadReport('pdf')}
                   className="text-xs bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 px-4 py-2.5 rounded-xl font-semibold flex items-center gap-1.5 transition-all active:scale-[0.98]"
                 >
                   📕 Download PDF Report
-                </button>
-                <button
-                  onClick={downloadJsonReport}
-                  className="text-xs bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 px-4 py-2.5 rounded-xl font-semibold flex items-center gap-1.5 transition-all active:scale-[0.98]"
-                >
-                  ⚙️ Download JSON Report
                 </button>
                 <button
                   onClick={downloadHighlightedPdf}

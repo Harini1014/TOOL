@@ -59,7 +59,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Backend runs at: http://localhost:8000
+Backend runs at: https://tool-2-3w1t.onrender.com/
 
 ### Step 2 — Frontend (new terminal)
 
