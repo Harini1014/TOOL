@@ -14,7 +14,7 @@ timeout /t 5 /nobreak >nul
 
 echo.
 echo Both servers are starting...
-echo Backend  : https://qa-tool-1oh2.onrender.com
+echo Backend  : http://localhost:8000
 echo Frontend : http://localhost:5173
 echo.
 echo Open your browser at http://localhost:5173

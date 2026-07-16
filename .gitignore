@@ -1,8 +1,5 @@
 node_modules/
-frontend/node_modules/
-
-dist/
-frontend/dist/
-
+backend/debug.log
 __pycache__/
 *.pyc
+.env

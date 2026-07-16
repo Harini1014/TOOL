@@ -1,301 +1,253 @@
-import React, { useMemo, useCallback, useState } from 'react'
+import React, { useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import axios from 'axios'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
 
-const API_BASE = "https://tool-2-3w1t.onrender.com" // TODO: make this configurable
+const API_BASE = "http://localhost:8000"
 
 function BadgeCell({ value, color }) {
   const colors = {
-    purple: 'bg-purple-100 text-purple-800',
-    blue  : 'bg-blue-100 text-blue-800',
-    red   : 'bg-red-100 text-red-800',
+    purple: 'bg-purple-950/40 text-purple-300 border border-purple-800/40',
+    blue  : 'bg-blue-950/40 text-blue-300 border border-blue-800/40',
+    red   : 'bg-red-950/40 text-red-300 border border-red-800/40',
+    green : 'bg-green-950/40 text-green-300 border border-green-800/40',
+    orange: 'bg-orange-950/40 text-orange-300 border border-orange-800/40',
+    yellow: 'bg-yellow-950/40 text-yellow-300 border border-yellow-800/40'
   }
   return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${colors[color] || colors.purple}`}>
+    <span className={`inline-block px-2.5 py-0.5 rounded-md text-xs font-semibold border ${colors[color] || colors.purple}`}>
       {value}
     </span>
   )
 }
 
-function CheckBadge(p)    { return <BadgeCell value={p.value} color="purple" /> }
-function PageBadge(p)     { return <BadgeCell value={p.value} color="blue"   /> }
-
 export default function ReportPage() {
   const location = useLocation()
-  const navigate  = useNavigate()
-  const result  = location.state?.result
-  const checks  = location.state?.checks || []
-
-  const [downloading, setDownloading] = useState(null) // 'docx' | 'pdf' | 'highlight' | null
-  const [downloadError, setDownloadError] = useState('')
+  const navigate = useNavigate()
+  const result = location.state?.result
+  const checks = location.state?.checks || []
+  const pdfFile = window._qaValidationPdfFile || null
 
   if (!result) {
     navigate('/')
     return null
   }
 
-  const { errors, total_errors, total_pages, affected_pages, checks_run } = result
+  const { errors = [], total_errors, total_pages, affected_pages, checks_run } = result
 
   const rowData = useMemo(() =>
-    errors.map((e, i) => ({ no: i + 1, check: e.check, page: e.page || '?', location: e.location })),
+    errors.map((e, i) => ({
+      no         : i + 1,
+      check      : e.check,
+      type       : e.type || 'Error',
+      color      : e.color || 'purple',
+      page       : e.page || '?',
+      line       : e.line || '—',
+      expected   : e.expected || '',
+      actual     : e.actual || '',
+      description: e.description || e.location || '',
+    })),
     [errors]
   )
 
   const colDefs = useMemo(() => [
-    { field: 'no',       headerName: '#',               width: 60,  sortable: true },
-    { field: 'check',    headerName: 'Check Item',       flex: 1.2,  sortable: true, filter: true, cellRenderer: CheckBadge },
-    { field: 'page',     headerName: 'Page',             width: 90,  sortable: true, cellRenderer: PageBadge },
-    { field: 'location', headerName: 'Location Reference', flex: 2,  sortable: true, filter: true,
+    { field: 'no',          headerName: '#',                 width: 50,  sortable: true },
+    { field: 'check',       headerName: 'Check Item',        width: 180, sortable: true, filter: true },
+    { field: 'type',        headerName: 'Error Type',        width: 140, sortable: true, filter: true,
+      cellRenderer: (p) => <BadgeCell value={p.value} color={p.data.color} /> },
+    { field: 'page',        headerName: 'Page',              width: 80,  sortable: true,
+      cellRenderer: (p) => <BadgeCell value={`Pg ${p.value}`} color="blue" /> },
+    { field: 'expected',    headerName: 'Expected (Word)',   width: 160, sortable: true, filter: true,
+      cellStyle: { fontFamily: 'monospace', color: '#10b981' } },
+    { field: 'actual',      headerName: 'Actual (PDF)',      width: 160, sortable: true, filter: true,
+      cellStyle: { fontFamily: 'monospace', color: '#ef4444' } },
+    { field: 'description', headerName: 'Description',       flex: 2,    sortable: true, filter: true,
       wrapText: true, autoHeight: true,
       cellStyle: { lineHeight: '1.5', paddingTop: '8px', paddingBottom: '8px' } },
   ], [])
 
   const defaultColDef = useMemo(() => ({
-    resizable : true,
+    resizable: true,
     suppressMovable: false,
   }), [])
 
+  // ── Download: Word or PDF report ─────────────────────────────────────────
   async function downloadReport(format) {
-    setDownloadError('')
-    setDownloading(format)
     try {
-      const payload = {
-        errors        : errors.map(e => ({ check: e.check, page: String(e.page ?? '?'), location: e.location || '' })),
-        total_errors,
-        total_pages,
-        affected_pages,
-        checks_run,
-        format,
-      }
+      const form = new FormData()
+      form.append('format', format)
+      form.append('errors', JSON.stringify(errors))
 
-      const response = await axios.post(
-        `${API_BASE}/generate-report`,
-        payload,
-        { responseType: 'blob' }
-      )
-
-      const blob = new Blob([response.data], {
-        type: format === 'pdf'
-          ? 'application/pdf'
-          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      const res = await fetch(`${API_BASE}/download-report`, {
+        method: 'POST',
+        body: form
       })
+      if (!res.ok) {
+        const text = await res.text()
+        console.error('Download report backend error:', text)
+        throw new Error(`Server error: ${text.slice(0, 100)}`)
+      }
+      const blob = await res.blob()
       const url = URL.createObjectURL(blob)
-      const a   = document.createElement('a')
+      const a = document.createElement('a')
       a.href = url
-      a.download = `qc-report.${format === 'pdf' ? 'pdf' : 'docx'}`
+      a.download = format === 'docx' ? 'qa_report.docx' : 'qa_report.pdf'
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      // axios blob error responses come back as a Blob too — try to read the detail message
-      let message = 'Failed to generate report. Is the backend running?'
-      if (e?.response?.data instanceof Blob) {
-        try {
-          const text = await e.response.data.text()
-          const parsed = JSON.parse(text)
-          message = parsed?.detail || message
-        } catch {
-          // ignore parse errors, fall back to default message
-        }
-      } else if (e?.response?.data?.detail) {
-        message = e.response.data.detail
-      }
-      setDownloadError(message)
-    } finally {
-      setDownloading(null)
+      console.error('Download error:', e)
+      alert('Failed to download report. Check browser console for details.')
     }
   }
 
-  async function downloadHighlightedPdf() {
-    setDownloadError('')
+  // ── Download: JSON report ────────────────────────────────────────────────
+  function downloadJsonReport() {
+    try {
+      const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'qa_report.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('JSON Download error:', e)
+      alert('Failed to download JSON report.')
+    }
+  }
 
-    // The original File object doesn't survive React Router navigation state
-    // (it's not serializable), so ValidatePage stashes it on window before
-    // navigating here. See: window._qaValidationPdfFile.
-    const pdfFile = window._qaValidationPdfFile
+  // ── Download: Highlighted PDF ────────────────────────────────────────────
+  async function downloadHighlightedPdf() {
     if (!pdfFile) {
-      setDownloadError('The original PDF is no longer available in this session. Please re-run validation to generate a highlighted copy.')
+      alert('PDF file not available. Please re-run validation.')
       return
     }
-
-    setDownloading('highlight')
     try {
       const form = new FormData()
       form.append('pdf_file', pdfFile)
-      form.append('errors', JSON.stringify(
-        errors.map(e => ({
-          check: e.check,
-          page: String(e.page ?? '?'),
-          location: e.location || '',
-          search_string: e.search_string || '',
-          anchor_context: e.anchor_context || '',
-          before_text: e.before_text || '',
-          after_text: e.after_text || ''
-        }))
-      ))
+      form.append('errors', JSON.stringify(errors))
 
-      const response = await axios.post(
-        `${API_BASE}/highlight-pdf`,
-        form,
-        { responseType: 'blob' }
-      )
-
-      const blob = new Blob([response.data], { type: 'application/pdf' })
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
+      const res = await fetch(`${API_BASE}/highlighted-pdf`, { method: 'POST', body: form })
+      if (!res.ok) throw new Error('Server error')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
       a.href = url
-      a.download = 'highlighted-errors.pdf'
+      a.download = 'highlighted_report.pdf'
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      let message = 'Failed to generate highlighted PDF. Is the backend running?'
-      if (e?.response?.data instanceof Blob) {
-        try {
-          const text = await e.response.data.text()
-          const parsed = JSON.parse(text)
-          message = parsed?.detail || message
-        } catch {
-          // ignore parse errors, fall back to default message
-        }
-      } else if (e?.response?.data?.detail) {
-        message = e.response.data.detail
-      }
-      setDownloadError(message)
-    } finally {
-      setDownloading(null)
+      console.error('Highlighted PDF error:', e)
+      alert('Failed to generate highlighted PDF. Check browser console for details.')
     }
   }
 
-  function exportCSV() {
-    const header = ['#', 'Check Item', 'Page', 'Location Reference']
-    const rows = errors.map((e, i) => [i + 1, e.check, e.page || '?', e.location])
-    const csv  = [header, ...rows]
-      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
-      .join('\r\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = 'qc-report.csv'; a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  function exportTXT() {
-    const lines = [
-      'PUBLISHING QA VALIDATION REPORT',
-      '='.repeat(60),
-      '',
-      `Total Errors   : ${total_errors}`,
-      `Checks Run     : ${checks_run}`,
-      `Total Pages    : ${total_pages}`,
-      `Affected Pages : ${affected_pages.join(', ') || 'N/A'}`,
-      '',
-      '-'.repeat(60),
-      `${'#'.padEnd(4)} ${'Check Item'.padEnd(36)} ${'Page'.padEnd(8)} Location`,
-      '-'.repeat(60),
-      ...errors.map((e, i) =>
-        `${String(i+1).padEnd(4)} ${(e.check||'').padEnd(36)} ${(e.page||'?').padEnd(8)} ${e.location||'—'}`
-      ),
-    ]
-    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = 'qc-report.txt'; a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen py-12 px-4 relative">
+      {/* Background ambient glows */}
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="max-w-7xl mx-auto relative z-10">
 
         {/* Header */}
-        <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate('/')}
-              className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1"
+              className="text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2 flex items-center gap-1.5"
             >
-              ← Back
+              <span>←</span> Back
             </button>
-            <h1 className="text-xl font-bold text-gray-900">Validation Report</h1>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => downloadReport('docx')}
-              disabled={downloading !== null}
-              className="text-xs border border-gray-200 bg-white text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {downloading === 'docx' ? '⏳ Generating…' : '⬇ Word Report'}
-            </button>
-            <button
-              onClick={() => downloadReport('pdf')}
-              disabled={downloading !== null}
-              className="text-xs border border-gray-200 bg-white text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {downloading === 'pdf' ? '⏳ Generating…' : '⬇ PDF Report'}
-            </button>
-            <button
-              onClick={downloadHighlightedPdf}
-              disabled={downloading !== null}
-              className="text-xs border border-gray-200 bg-white text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {downloading === 'highlight' ? '⏳ Generating…' : '🖍 Highlighted PDF'}
-            </button>
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-100 to-slate-300 bg-clip-text text-transparent">
+                Validation Report
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">Publishing QA Verification Output</p>
+            </div>
           </div>
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'Total Errors',    value: total_errors,              color: total_errors > 0 ? 'text-red-600' : 'text-green-600' },
-            { label: 'Checks Run',      value: checks_run,                color: 'text-gray-900' },
-            { label: 'Total Pages',     value: total_pages,               color: 'text-gray-900' },
-            { label: 'Affected Pages',  value: affected_pages.length,     color: affected_pages.length > 0 ? 'text-orange-600' : 'text-green-600' },
+            { label: 'Total Errors', value: total_errors, color: total_errors > 0 ? 'text-red-400' : 'text-emerald-400', glow: total_errors > 0 ? 'shadow-red-500/5' : 'shadow-emerald-500/5' },
+            { label: 'Checks Run', value: checks_run, color: 'text-slate-200', glow: 'shadow-slate-500/5' },
+            { label: 'Total Pages', value: total_pages, color: 'text-slate-200', glow: 'shadow-slate-500/5' },
+            { label: 'Affected Pages', value: affected_pages.length, color: affected_pages.length > 0 ? 'text-amber-400' : 'text-emerald-400', glow: affected_pages.length > 0 ? 'shadow-amber-500/5' : 'shadow-emerald-500/5' },
           ].map(s => (
-            <div key={s.label} className="bg-white border border-gray-200 rounded-xl p-4">
-              <p className="text-xs text-gray-500 font-medium mb-1">{s.label}</p>
-              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            <div key={s.label} className={`glass-panel rounded-2xl p-5 shadow-lg ${s.glow} hover:border-slate-700 transition-colors`}>
+              <p className="text-xs text-slate-500 font-medium tracking-wider uppercase mb-1">{s.label}</p>
+              <p className={`text-3xl font-extrabold ${s.color}`}>{s.value}</p>
             </div>
           ))}
         </div>
 
-        {/* Download error */}
-        {downloadError && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
-            ⚠️ {downloadError}
-          </div>
-        )}
-
-        {/* Affected pages */}
+        {/* Affected pages info block */}
         {affected_pages.length > 0 && (
-          <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 mb-4 text-sm text-orange-700">
-            <strong>Affected pages:</strong> {affected_pages.join(', ')}
+          <div className="bg-amber-950/20 border border-amber-800/40 rounded-2xl px-5 py-4 mb-6 text-sm text-amber-300 flex items-center gap-2">
+            <span className="text-base">📍</span>
+            <span>
+              <strong>Affected pages checklist:</strong> {affected_pages.map(p => `Page ${p}`).join(', ')}
+            </span>
           </div>
         )}
 
-        {/* No errors */}
+        {/* No errors state */}
         {total_errors === 0 && (
-          <div className="bg-white border border-green-200 rounded-xl p-10 text-center">
-            <p className="text-4xl mb-3">✅</p>
-            <p className="text-lg font-semibold text-green-700">No errors found</p>
-            <p className="text-sm text-gray-500 mt-1">All {checks_run} checks passed successfully.</p>
+          <div className="glass-panel rounded-3xl p-16 text-center border-emerald-500/20 shadow-emerald-500/5 shadow-2xl">
+            <p className="text-5xl mb-4 animate-bounce">🎉</p>
+            <p className="text-xl font-bold text-emerald-400">All Checks Passed Successfully!</p>
+            <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto leading-relaxed">
+              No errors were found between the Word source document and the typeset PDF. All {checks_run} verification constraints are satisfied.
+            </p>
           </div>
         )}
 
         {/* AG Grid table */}
         {total_errors > 0 && (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-              <p className="text-sm font-semibold text-gray-700">
-                {total_errors} error{total_errors !== 1 ? 's' : ''} found
-              </p>
-              <div className="flex gap-2">
-                
+          <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl relative">
+            <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-slate-800 to-transparent" />
+
+            {/* Toolbar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-5 border-b border-slate-800 bg-slate-900/30">
+              <div>
+                <p className="text-sm font-semibold text-slate-300">
+                  Detected Discrepancies ({total_errors} item{total_errors !== 1 ? 's' : ''})
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">Click any row to view cell details.</p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => downloadReport('docx')}
+                  className="text-xs bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 px-4 py-2.5 rounded-xl font-semibold flex items-center gap-1.5 transition-all active:scale-[0.98]"
+                >
+                  📄 Download Word Report
+                </button>
+                <button
+                  onClick={() => downloadReport('pdf')}
+                  className="text-xs bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 px-4 py-2.5 rounded-xl font-semibold flex items-center gap-1.5 transition-all active:scale-[0.98]"
+                >
+                  📕 Download PDF Report
+                </button>
+                <button
+                  onClick={downloadJsonReport}
+                  className="text-xs bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 px-4 py-2.5 rounded-xl font-semibold flex items-center gap-1.5 transition-all active:scale-[0.98]"
+                >
+                  ⚙️ Download JSON Report
+                </button>
+                <button
+                  onClick={downloadHighlightedPdf}
+                  className="text-xs bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 px-4 py-2.5 rounded-xl font-black flex items-center gap-1.5 shadow-lg shadow-amber-500/10 transition-all active:scale-[0.98]"
+                >
+                  🔆 Download Annotated PDF
+                </button>
               </div>
             </div>
-            <div className="ag-theme-alpine w-full" style={{ height: Math.min(80 + rowData.length * 52, 600) }}>
+
+            {/* Grid */}
+            <div className="ag-theme-alpine w-full" style={{ height: Math.min(80 + rowData.length * 56, 560) }}>
               <AgGridReact
                 rowData={rowData}
                 columnDefs={colDefs}
@@ -303,15 +255,15 @@ export default function ReportPage() {
                 animateRows={true}
                 rowSelection="single"
                 suppressCellFocus={true}
-                pagination={rowData.length > 50}
-                paginationPageSize={50}
+                pagination={rowData.length > 100}
+                paginationPageSize={100}
               />
             </div>
           </div>
         )}
 
-        <p className="text-xs text-gray-400 mt-4 text-center">
-          Publishing QA Validation Tool — powered by PyMuPDF + python-docx
+        <p className="text-xs text-slate-600 mt-6 text-center">
+          Publishing QA Tool — Powered by PyMuPDF + python-docx
         </p>
       </div>
     </div>

@@ -26,14 +26,14 @@ export default function UploadZone({ label, hint, accept, icon, onFile }) {
         className="hidden"
         onChange={e => handleFile(e.target.files[0])}
       />
-      <div className={`text-4xl mb-3 ${filename ? 'text-brand' : 'text-gray-400'}`}>{icon}</div>
-      <p className="font-semibold text-gray-700">{label}</p>
-      <p className="text-xs text-gray-400 mt-1">{hint}</p>
+      <div className={`text-4xl mb-3 ${filename ? 'text-emerald-400' : 'text-slate-500'}`}>{icon}</div>
+      <p className="font-semibold text-slate-200">{label}</p>
+      <p className="text-xs text-slate-400 mt-1">{hint}</p>
       {filename && (
-        <p className="mt-2 text-sm font-medium text-brand truncate max-w-full">✓ {filename}</p>
+        <p className="mt-2 text-sm font-medium text-emerald-400 truncate max-w-full">✓ {filename}</p>
       )}
       {!filename && (
-        <p className="mt-3 text-xs text-gray-400">Click or drag & drop</p>
+        <p className="mt-3 text-xs text-slate-400">Click or drag & drop</p>
       )}
     </div>
   )

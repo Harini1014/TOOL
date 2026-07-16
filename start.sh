@@ -19,12 +19,11 @@ npm run dev &
 FRONTEND_PID=$!
 cd ..
 
-echo ""
 echo "✅ Both servers are running:"
-echo "   Backend  → https://qa-tool-1oh2.onrender.com//"
-echo "   Frontend → https://qa-tool-1oh2.onrender.com"
+echo "   Backend  → http://localhost:8000"
+echo "   Frontend → http://localhost:5173"
 echo ""
-echo "Open https://qa-tool-1oh2.onrender.com in your browser."
+echo "Open http://localhost:5173 in your browser."
 echo "Press Ctrl+C to stop both servers."
 
 wait $BACKEND_PID $FRONTEND_PID
