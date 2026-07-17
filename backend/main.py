@@ -9,6 +9,7 @@ from docx import Document
 from docx.text.paragraph import Paragraph
 from docx.table import Table
 from docx.oxml.ns import qn
+from collections import defaultdict
 
 app = FastAPI(title="Publishing QA Validation API", version="2.0.0")
 
@@ -96,9 +97,46 @@ def extract_word_tokens(doc_path: str) -> list:
     for block in iter_block_items(doc):
         if isinstance(block, Paragraph):
             para_idx += 1
-            text = re.sub(r'<[^>]+>', '', block.text)
+            orig_text = block.text
+            has_hdr_tag = bool(re.search(r'<(H\d|CT|ST|T|FMT|TITLE|HEADING|CAPT|FIG|TBL)\b', orig_text, re.I))
+            is_bold = False
+            is_large = False
+            is_centered = False
+            try:
+                for r in block.runs:
+                    if r.text.strip():
+                        # Explicitly bold run
+                        if r.bold or (r.font and r.font.bold):
+                            is_bold = True
+                        # Explicitly large size
+                        if r.font and r.font.size:
+                            try:
+                                if r.font.size.pt >= 13.0:
+                                    is_large = True
+                            except:
+                                pass
+            except:
+                pass
+                
+            try:
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+                if block.alignment == WD_ALIGN_PARAGRAPH.CENTER:
+                    is_centered = True
+            except:
+                pass
+                
+            text = re.sub(r'<[^>]+>', '', orig_text)
             text = strip_inline_list_markers(text)
             style = block.style.name if block.style else "Normal"
+            name_lower = style.lower()
+            is_style_hdr = any(kw in name_lower for kw in ["heading", "title", "subtitle", "chapter", "section", "caption", "figure", "table"])
+            
+            text_clean = text.strip()
+            is_short = len(text_clean) > 0 and len(text_clean) <= 120
+            
+            if (is_style_hdr or has_hdr_tag or (is_short and (is_bold or is_large or is_centered))) and not is_style_hdr:
+                style = f"Heading_{style}"
+                
             tokens.extend(process_text_segment(text, para_idx, style, "paragraph"))
             if tokens and not tokens[-1]["is_space"]:
                 tokens.append({
@@ -284,11 +322,12 @@ def extract_pdf_tokens(pdf_path: str, start_page: int = 0) -> list:
             for line in block.get("lines", []):
                 y_center = (line["bbox"][1] + line["bbox"][3]) / 2
                 
-                # Filter out header/footer zones
-                if y_center < page_h * 0.08:
-                    continue
-                if y_center > page_h * 0.92:
-                    continue
+                # Filter out header/footer zones (except on page 1 / index 0)
+                if page_idx > 0:
+                    if y_center < page_h * 0.08:
+                        continue
+                    if y_center > page_h * 0.92:
+                        continue
                     
                 all_lines.append((line, block_text))
                 
@@ -325,9 +364,16 @@ def extract_pdf_tokens(pdf_path: str, start_page: int = 0) -> list:
             line_idx += 1
             line_chars = []
             for span in line.get("spans", []):
+                font_name = span.get("font", "")
+                font_size = span.get("size", 10.0)
+                flags = span.get("flags", 0)
+                is_bold_flag = bool(flags & 16)
                 for char_obj in span.get("chars", []):
                     if char_obj["c"] == "\xad":
                         continue
+                    char_obj["font"] = font_name
+                    char_obj["size"] = font_size
+                    char_obj["is_bold"] = is_bold_flag
                     line_chars.append(char_obj)
                     
             # Group characters in this line into words to identify list markers at the start
@@ -400,6 +446,9 @@ def extract_pdf_tokens(pdf_path: str, start_page: int = 0) -> list:
                     "char_in_line": char_in_line,
                     "word_idx_in_line": word_idx,
                     "bbox": char_obj["bbox"],
+                    "font": char_obj.get("font", ""),
+                    "size": char_obj.get("size", 10.0),
+                    "is_bold": char_obj.get("is_bold", False),
                     "is_space": is_space
                 })
             if tokens and not tokens[-1]["is_space"]:
@@ -411,6 +460,9 @@ def extract_pdf_tokens(pdf_path: str, start_page: int = 0) -> list:
                     "char_in_line": last_tok["char_in_line"] + 1,
                     "word_idx_in_line": last_tok["word_idx_in_line"],
                     "bbox": last_tok["bbox"],
+                    "font": last_tok.get("font", ""),
+                    "size": last_tok.get("size", 10.0),
+                    "is_bold": last_tok.get("is_bold", False),
                     "is_space": True
                 })
     doc.close()
@@ -1217,6 +1269,385 @@ def check_unwanted_chars(pdf_path: str) -> list:
     doc.close()
     return errors
 
+
+def check_title_validation(word_path: str, pdf_path: str, alignments: list, pdf_tokens: list) -> list:
+    errors = []
+    
+    lowercase_words = {
+        "a", "an", "the", "of", "is", "in", "on", "at", "to", "for", "by", "with", "and", "or", "nor", "but", "as", "from"
+    }
+    
+    def clean_word_for_title_case(word: str) -> str:
+        return re.sub(r'^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$', '', word)
+        
+    def strip_heading_prefixes(text: str) -> str:
+        text = re.sub(r'^\b(chapter|section|sec|part|unit)\s+([ivx\d]+|[a-z])\b[:\s\-–—]*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'^\s*([A-Za-z0-9]+\.)+\s*', '', text)
+        return text.strip()
+        
+    # Extract dominant font size of PDF
+    sizes = [t["size"] for t in pdf_tokens if not t["is_space"] and t.get("size") is not None]
+    dominant_size = 10.0
+    if sizes:
+        from collections import Counter
+        counts = Counter(round(s, 1) for s in sizes)
+        dominant_size = counts.most_common(1)[0][0]
+        
+    # Compute Word dominant font size
+    word_dominant_size = 11.0
+    try:
+        doc = Document(word_path)
+        word_sizes = []
+        for p in doc.paragraphs:
+            for r in p.runs:
+                if r.text.strip() and r.font and r.font.size:
+                    word_sizes.append(r.font.size.pt)
+        if word_sizes:
+            from collections import Counter
+            counts = Counter(round(s, 1) for s in word_sizes)
+            word_dominant_size = counts.most_common(1)[0][0]
+    except Exception as e:
+        print(f"DEBUG: Failed to compute Word dominant font size: {e}")
+        
+    reported_pdf_words = set()
+    
+    # ─── 1. Check Word Headings ───
+    try:
+        doc = Document(word_path)
+        para_idx = 0
+        for block in iter_block_items(doc):
+            if isinstance(block, Paragraph):
+                para_idx += 1
+                orig_text = block.text
+                style = block.style.name if block.style else "Normal"
+                text_clean = re.sub(r'<[^>]+>', '', orig_text)
+                text_clean = strip_inline_list_markers(text_clean).strip()
+                
+                name_lower = style.lower()
+                is_style_hdr = any(kw in name_lower for kw in ["heading", "title", "subtitle", "chapter", "section", "caption", "figure", "table"])
+                
+                has_hdr_tag = bool(re.search(r'<(H\d|CT|ST|T|FMT|TITLE|HEADING|CAPT|FIG|TBL)\b', orig_text, re.I))
+                is_bold = False
+                is_large = False
+                is_centered = False
+                max_run_size = None
+                try:
+                    for r in block.runs:
+                        if r.text.strip():
+                            if r.bold or (r.font and r.font.bold):
+                                is_bold = True
+                            if r.font and r.font.size:
+                                max_run_size = max(max_run_size or 0, r.font.size.pt)
+                except:
+                    pass
+                    
+                if max_run_size is not None and max_run_size >= word_dominant_size + 1.0:
+                    is_large = True
+                    
+                try:
+                    from docx.enum.text import WD_ALIGN_PARAGRAPH
+                    if block.alignment == WD_ALIGN_PARAGRAPH.CENTER:
+                        is_centered = True
+                except:
+                    pass
+                    
+                is_short = len(text_clean) > 0 and len(text_clean) <= 120
+                
+                alpha_only = "".join(c for c in text_clean if c.isalpha())
+                is_all_caps = alpha_only.isupper() if alpha_only else False
+                
+                is_word_heading_valid = (
+                    (is_style_hdr or 
+                     has_hdr_tag or 
+                     is_large or 
+                     (is_short and is_all_caps and len(alpha_only) >= 3))
+                    and len(text_clean) <= 150
+                )
+                
+                if is_word_heading_valid:
+                    # Skip if heading is all-caps
+                    alpha_only = "".join(c for c in text_clean if c.isalpha())
+                    if alpha_only.isupper():
+                        continue
+                        
+                    stripped_text = strip_heading_prefixes(text_clean)
+                    words = stripped_text.split()
+                    
+                    # Align stripped words to orig words
+                    orig_words = text_clean.split()
+                    start_w_idx = 0
+                    for idx in range(len(orig_words)):
+                        if clean_word_for_title_case(orig_words[idx]) in stripped_text:
+                            start_w_idx = idx
+                            break
+                            
+                    is_first_word = True
+                    for w_offset, word in enumerate(words):
+                        w_idx = start_w_idx + w_offset
+                        cleaned = clean_word_for_title_case(word)
+                        if not cleaned or not any(c.isalpha() for c in cleaned):
+                            continue
+                            
+                        is_after_colon = False
+                        if w_offset > 0:
+                            prev_w = words[w_offset - 1]
+                            if prev_w.endswith(':') or prev_w == ':':
+                                is_after_colon = True
+                                
+                        has_error = False
+                        expected_word = ""
+                        error_desc = ""
+                        
+                        if is_first_word or is_after_colon:
+                            if not cleaned[0].isupper():
+                                has_error = True
+                                idx = word.find(cleaned)
+                                if idx != -1:
+                                    expected_word = word[:idx] + cleaned[0].upper() + word[idx+1:]
+                                else:
+                                    expected_word = cleaned.capitalize()
+                                error_desc = "The first word of a title or subtitle must start with a capital letter."
+                        else:
+                            cleaned_lower = cleaned.lower()
+                            if cleaned_lower in lowercase_words:
+                                if cleaned != cleaned_lower:
+                                    has_error = True
+                                    idx = word.find(cleaned)
+                                    if idx != -1:
+                                        expected_word = word[:idx] + cleaned_lower + word[idx + len(cleaned):]
+                                    else:
+                                        expected_word = cleaned_lower
+                                    error_desc = f"The word '{cleaned}' should be lowercase because it is not the first word."
+                            else:
+                                if not cleaned[0].isupper():
+                                    has_error = True
+                                    idx = word.find(cleaned)
+                                    if idx != -1:
+                                        expected_word = word[:idx] + cleaned[0].upper() + word[idx+1:]
+                                    else:
+                                        expected_word = cleaned[0].upper() + cleaned[1:]
+                                    error_desc = f"The word '{cleaned}' should start with a capital letter."
+                                    
+                        if has_error:
+                            pdf_page = 1
+                            pdf_line = 1
+                            word_bboxes = []
+                            mapped_pdf_word_keys = []
+                            for tag, w_tok, p_tok in alignments:
+                                if w_tok and w_tok.get("para_idx") == para_idx and w_tok.get("word_idx_in_para") == w_idx:
+                                    if p_tok:
+                                        pdf_page = p_tok["page_idx"] + 1
+                                        pdf_line = p_tok["line_idx"]
+                                        if p_tok.get("bbox"):
+                                            word_bboxes.append(p_tok["bbox"])
+                                        mapped_pdf_word_keys.append((p_tok["page_idx"], p_tok["line_idx"], p_tok["word_idx_in_line"]))
+                                        
+                            nearest_bbox = word_bboxes[0] if word_bboxes else None
+                            
+                            for key in mapped_pdf_word_keys:
+                                reported_pdf_words.add(key)
+                                
+                            errors.append({
+                                "check": "Title validation",
+                                "page": str(pdf_page),
+                                "line": pdf_line,
+                                "para": para_idx,
+                                "char_pos": 0,
+                                "word_idx": w_idx,
+                                "type": "Title Case Violation",
+                                "color": "yellow",
+                                "expected": expected_word,
+                                "actual": word,
+                                "location": f"Title Case Violation: expected '{expected_word}' but found '{word}' in Word (P{para_idx})",
+                                "description": error_desc,
+                                "bboxes": word_bboxes,
+                                "nearest_bbox": nearest_bbox
+                            })
+                        is_first_word = False
+    except Exception as e:
+        print(f"DEBUG: Exception in Word title validation: {e}")
+        
+    # ─── 2. Check PDF Headings ───
+    try:
+        pdf_lines = defaultdict(list)
+        for tok in pdf_tokens:
+            page_idx = tok["page_idx"]
+            line_idx = tok["line_idx"]
+            pdf_lines[(page_idx, line_idx)].append(tok)
+            
+        heading_lines = []
+        for (page_idx, line_idx), line_toks in sorted(pdf_lines.items()):
+            words = []
+            current_word_toks = []
+            for tok in line_toks:
+                if not tok["is_space"]:
+                    current_word_toks.append(tok)
+                else:
+                    if current_word_toks:
+                        words.append(current_word_toks)
+                        current_word_toks = []
+            if current_word_toks:
+                words.append(current_word_toks)
+                
+            if not words:
+                continue
+                
+            line_words_str = []
+            for word_toks in words:
+                word_str = "".join(t["char"] for t in word_toks)
+                line_words_str.append(word_str)
+            line_text = " ".join(line_words_str)
+            
+            line_sizes = [t["size"] for word_toks in words for t in word_toks if t.get("size") is not None]
+            max_size = max(line_sizes) if line_sizes else 10.0
+            has_bold = any(t["is_bold"] for word_toks in words for t in word_toks)
+            
+            alpha_text = "".join(c for c in line_text if c.isalpha())
+            is_all_caps = alpha_text.isupper() if alpha_text else False
+            
+            is_heading = False
+            if max_size >= dominant_size + 1.5:
+                is_heading = True
+            elif max_size >= dominant_size + 0.5 and has_bold:
+                is_heading = True
+            elif is_all_caps and len(alpha_text) >= 3 and max_size >= dominant_size:
+                is_heading = True
+                
+            if is_heading:
+                heading_lines.append({
+                    "page_idx": page_idx,
+                    "line_idx": line_idx,
+                    "text": line_text,
+                    "words": words,
+                    "size": max_size,
+                    "bold": has_bold
+                })
+                
+        # Group consecutive heading lines
+        grouped_headings = []
+        if heading_lines:
+            current_group = [heading_lines[0]]
+            for next_line in heading_lines[1:]:
+                prev_line = current_group[-1]
+                if (next_line["page_idx"] == prev_line["page_idx"] and
+                    next_line["line_idx"] == prev_line["line_idx"] + 1 and
+                    abs(next_line["size"] - prev_line["size"]) < 1.0 and
+                    next_line["bold"] == prev_line["bold"]):
+                    current_group.append(next_line)
+                else:
+                    grouped_headings.append(current_group)
+                    current_group = [next_line]
+            grouped_headings.append(current_group)
+            
+        for group in grouped_headings:
+            page_idx = group[0]["page_idx"]
+            line_idx = group[0]["line_idx"]
+            full_heading_text = " ".join(l["text"] for l in group)
+            
+            # Skip if heading text has too few letters
+            alpha_heading = "".join(c for c in full_heading_text if c.isalpha())
+            if len(alpha_heading) < 3:
+                continue
+                
+            if alpha_heading.isupper():
+                continue
+                
+            all_words_toks = []
+            for l in group:
+                all_words_toks.extend(l["words"])
+                
+            stripped_heading_text = strip_heading_prefixes(full_heading_text)
+            words_str = stripped_heading_text.split()
+            
+            orig_words_str = full_heading_text.split()
+            start_w_idx = 0
+            for idx in range(len(orig_words_str)):
+                if clean_word_for_title_case(orig_words_str[idx]) in stripped_heading_text:
+                    start_w_idx = idx
+                    break
+                    
+            is_first_word = True
+            for w_offset, word_str in enumerate(words_str):
+                w_idx = start_w_idx + w_offset
+                if w_idx >= len(all_words_toks):
+                    continue
+                word_toks = all_words_toks[w_idx]
+                cleaned = clean_word_for_title_case(word_str)
+                if not cleaned or not any(c.isalpha() for c in cleaned):
+                    continue
+                    
+                word_keys = [(t["page_idx"], t["line_idx"], t["word_idx_in_line"]) for t in word_toks]
+                if any(k in reported_pdf_words for k in word_keys):
+                    is_first_word = False
+                    continue
+                    
+                is_after_colon = False
+                if w_offset > 0:
+                    prev_w = words_str[w_offset - 1]
+                    if prev_w.endswith(':') or prev_w == ':':
+                        is_after_colon = True
+                        
+                has_error = False
+                expected_word = ""
+                error_desc = ""
+                
+                if is_first_word or is_after_colon:
+                    if not cleaned[0].isupper():
+                        has_error = True
+                        idx = word_str.find(cleaned)
+                        if idx != -1:
+                            expected_word = word_str[:idx] + cleaned[0].upper() + word_str[idx+1:]
+                        else:
+                            expected_word = cleaned.capitalize()
+                        error_desc = "The first word of a title or subtitle must start with a capital letter."
+                else:
+                    cleaned_lower = cleaned.lower()
+                    if cleaned_lower in lowercase_words:
+                        if cleaned != cleaned_lower:
+                            has_error = True
+                            idx = word_str.find(cleaned)
+                            if idx != -1:
+                                expected_word = word_str[:idx] + cleaned_lower + word_str[idx + len(cleaned):]
+                            else:
+                                expected_word = cleaned_lower
+                            error_desc = f"The word '{cleaned}' should be lowercase because it is not the first word."
+                    else:
+                        if not cleaned[0].isupper():
+                            has_error = True
+                            idx = word_str.find(cleaned)
+                            if idx != -1:
+                                expected_word = word_str[:idx] + cleaned[0].upper() + word_str[idx+1:]
+                            else:
+                                expected_word = cleaned[0].upper() + cleaned[1:]
+                            error_desc = f"The word '{cleaned}' should start with a capital letter."
+                            
+                if has_error:
+                    word_bboxes = [t["bbox"] for t in word_toks if t.get("bbox") is not None]
+                    nearest_bbox = word_bboxes[0] if word_bboxes else None
+                    
+                    errors.append({
+                        "check": "Title validation",
+                        "page": str(page_idx + 1),
+                        "line": line_idx,
+                        "para": 0,
+                        "char_pos": 0,
+                        "word_idx": 0,
+                        "type": "Title Case Violation",
+                        "color": "yellow",
+                        "expected": expected_word,
+                        "actual": word_str,
+                        "location": f"Title Case Violation: expected '{expected_word}' but found '{word_str}' in PDF (Pg{page_idx + 1} L{line_idx})",
+                        "description": error_desc,
+                        "bboxes": word_bboxes,
+                        "nearest_bbox": nearest_bbox
+                    })
+                is_first_word = False
+    except Exception as e:
+        print(f"DEBUG: Exception in PDF title validation: {e}")
+        
+    return errors
+
+
 # ─── Main Validation Endpoint ───────────────────────────────────────────────
 
 @app.post("/validate")
@@ -1272,7 +1703,8 @@ async def validate(
             "Word-to-Word Comparison" in selected or 
             "Missing Content" in selected or "No Content Missing" in selected or 
             "Typos" in selected or "No Typos" in selected or 
-            "Quotations" in selected or "Quotation Check" in selected):
+            "Quotations" in selected or "Quotation Check" in selected or
+            "Title validation" in selected):
             word_tokens = extract_word_tokens(word_path)
             pdf_tokens = extract_pdf_tokens(pdf_path, start_page)
             
@@ -1289,9 +1721,21 @@ async def validate(
             matching_blocks = sm.get_matching_blocks()
             
             alignments = align_all_characters(word_tokens, pdf_tokens, word_words, pdf_words, matching_blocks)
-            text_errors = group_mismatch_segments(alignments)
-            all_errors.extend(text_errors)
             
+            if (not selected or 
+                "Word-to-Word Comparison" in selected or 
+                "Missing Content" in selected or "No Content Missing" in selected or 
+                "Typos" in selected or "No Typos" in selected or 
+                "Quotations" in selected or "Quotation Check" in selected):
+                text_errors = group_mismatch_segments(alignments)
+                all_errors.extend(text_errors)
+                
+            if (not selected or "Title validation" in selected):
+                pdf_tokens_all = extract_pdf_tokens(pdf_path, 0)
+                title_errors = check_title_validation(word_path, pdf_path, alignments, pdf_tokens_all)
+                all_errors.extend(title_errors)
+                
+
         import shutil
         try:
             shutil.copy(word_path, r"C:\Users\Harini\.gemini\antigravity-ide\scratch\latest.docx")

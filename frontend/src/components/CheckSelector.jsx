@@ -29,7 +29,8 @@ const CHECKS = [
   "Font Consistency",
   "Keyterm Page Numbers",
   "Figure Photo FPO Check",
-  "Unwanted Characters"
+  "Unwanted Characters",
+  "Title validation"
 ]
 
 export { CHECKS }
