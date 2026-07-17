@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/validate': 'http://localhost:8000/',
+      '/validate': 'git push origin main',
       '/health': 'http://localhost:5173',
     }
   }
