@@ -86,8 +86,8 @@ export default function ValidatePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <UploadZone
                 label="Word Source Document"
-                hint="Microsoft Word (.docx)"
-                accept=".docx"
+                hint="Microsoft Word (.docx, .doc)"
+                accept=".docx,.doc"
                 icon="📄"
                 onFile={setWordFile}
               />

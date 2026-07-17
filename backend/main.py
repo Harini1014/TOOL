@@ -1648,6 +1648,66 @@ def check_title_validation(word_path: str, pdf_path: str, alignments: list, pdf_
     return errors
 
 
+def convert_doc_to_docx(uploaded_path: str) -> str:
+    import os
+    import subprocess
+    import platform
+    
+    abs_path = os.path.abspath(uploaded_path)
+    output_dir = os.path.dirname(abs_path)
+    base_name = os.path.splitext(os.path.basename(abs_path))[0]
+    expected_docx_path = os.path.join(output_dir, base_name + ".docx")
+    
+    # 1. Try Windows COM via PowerShell if on Windows
+    if platform.system() == "Windows":
+        ps_script = f"""
+        try {{
+            $word = New-Object -ComObject Word.Application
+            $word.Visible = $false
+            $doc = $word.Documents.Open("{abs_path}")
+            $doc.SaveAs("{expected_docx_path}", 16)
+            $doc.Close()
+            $word.Quit()
+            Write-Output "SUCCESS"
+        }} catch {{
+            Write-Error $_.Exception.Message
+            exit 1
+        }}
+        """
+        try:
+            res = subprocess.run(
+                ["powershell", "-Command", ps_script],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            if "SUCCESS" in res.stdout and os.path.exists(expected_docx_path):
+                return expected_docx_path
+        except Exception as e:
+            print(f"DEBUG: Windows COM conversion failed: {e}")
+            
+    # 2. Try LibreOffice CLI (cross-platform, works on Linux/macOS/Windows if installed)
+    commands_to_try = [
+        ["libreoffice", "--headless", "--convert-to", "docx", abs_path, "--outdir", output_dir],
+        ["soffice", "--headless", "--convert-to", "docx", abs_path, "--outdir", output_dir]
+    ]
+                       
+    for cmd in commands_to_try:
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            if os.path.exists(expected_docx_path):
+                return expected_docx_path
+        except:
+            pass
+            
+    # 3. If conversion failed or no engine available, raise ValueError
+    raise ValueError(
+        "Could not convert legacy .doc file to .docx. "
+        "Please convert your document to .docx format locally before uploading, "
+        "or ensure MS Word or LibreOffice is installed on the server."
+    )
+
+
 # ─── Main Validation Endpoint ───────────────────────────────────────────────
 
 @app.post("/validate")
@@ -1658,17 +1718,35 @@ async def validate(
 ):
     selected = [c.strip() for c in checks.split(",") if c.strip()] if checks else []
     
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as wf:
-        wf.write(await word_file.read())
-        word_path = wf.name
-        
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as pf:
-        pf.write(await pdf_file.read())
-        pdf_path = pf.name
-        
+    filename = word_file.filename or "uploaded.docx"
+    is_doc = filename.lower().endswith(".doc")
+    
+    word_path = None
+    pdf_path = None
     all_errors = []
     
     try:
+        suffix = ".doc" if is_doc else ".docx"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as wf:
+            wf.write(await word_file.read())
+            word_path = wf.name
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as pf:
+            pf.write(await pdf_file.read())
+            pdf_path = pf.name
+            
+        if is_doc:
+            try:
+                converted = convert_doc_to_docx(word_path)
+                # Unlink old doc file
+                try:
+                    os.unlink(word_path)
+                except:
+                    pass
+                word_path = converted
+            except ValueError as val_err:
+                raise HTTPException(status_code=400, detail=str(val_err))
+                
         start_page = find_chapter_start_page(word_path, pdf_path)
         repeating_headers, is_page_number_like = identify_headers_footers(pdf_path)
         
