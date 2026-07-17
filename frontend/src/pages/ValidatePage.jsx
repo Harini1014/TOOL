@@ -30,7 +30,6 @@ export default function ValidatePage() {
       form.append('word_file', wordFile)
       form.append('pdf_file', pdfFile)
       form.append('checks', selected.join(','))
-
       const API_BASE = "https://tool-2-3w1t.onrender.com"
 
       const { data } = await axios.post(
@@ -166,3 +165,4 @@ export default function ValidatePage() {
     </div>
   )
 }
+
